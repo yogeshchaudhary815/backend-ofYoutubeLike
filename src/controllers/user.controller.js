@@ -32,7 +32,7 @@ const registerUser = asyncHandler( async (req, res) => {
     // return res
     
     const {fullName, email, username, password } = req.body
-    console.log("email: ", email);
+    console.log("email:>> ", email);
 
     // if(fullNmae === "") {
     //     throw new ApiError(400, "fullname is  required")
@@ -100,29 +100,31 @@ const registerUser = asyncHandler( async (req, res) => {
 
 } )
 
-const loginUser = asyncHandler(async (req, res) => {
+const loginUser = asyncHandler(async(req, res) => {
    // req body -> se data leao
    // username or email
    // find the user
    // password check
    // access and refresh token
    // send cookie
-
    const {email, username, password} = req.body
+   console.log("email isss: "+email)
 
-   if(!(username || email)) {
+   if(!username && !email) {
     throw new ApiError(400, "username or email is required")
    }
 
-   const user = User.findOne({
+   const user = await User.findOne({
        $or: [{username}, {email}]
    })
-
+// console.log("email isss: "+user)
    if(!user){
     throw new ApiError(404, "user does not exist")
-   }
+   };
 
-    const isPasswordValid = await user.isPasswordCorrect(password)
+   console.log("passworddd :"+ password)
+
+  const isPasswordValid = await user.isPasswordCorrect(password);
 
    
     if(!isPasswordValid) {
@@ -132,7 +134,7 @@ const loginUser = asyncHandler(async (req, res) => {
  const {accessToken,refreshToken} = await 
  generateAccessAndRefreshToken(user._id)
 
- const loggedInUser = User.findById(user._id)
+ const loggedInUser = await User.findById(user._id)
  .select("-password -refreshToken")
 
  const options = {
@@ -154,15 +156,15 @@ const loginUser = asyncHandler(async (req, res) => {
    )
  )
  
-})
+} )
 
-const logoutUSer = asyncHandler(async(req, res) => {
+const logoutUser = asyncHandler(async(req, res) => {
     
      User.findByIdAndUpdate(
       req.user._id,
       {
         $set: {
-          refreshToken: undefined
+          refreshToken: 1
         }
       },
       {
@@ -185,6 +187,6 @@ const logoutUSer = asyncHandler(async(req, res) => {
 
 export {
   registerUser,
-  logoutUSer,
+  logoutUser,
   loginUser
 }
