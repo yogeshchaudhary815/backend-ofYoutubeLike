@@ -3,7 +3,8 @@ import { ApiError } from "../utils/ApiError.js"
 import { User } from "../models/user.model.js"
 import { uploadOnCloudinary } from "../utils/cloudinary.js"
 import { ApiResponse } from "../utils/ApiResponse.js";
-
+import jwt  from "jsonwebtoken";
+import { json } from "express";
 const generateAccessAndRefreshToken = async(userId) => {
   try {
     const user = await User.findById(userId)
@@ -134,7 +135,7 @@ const loginUser = asyncHandler(async(req, res) => {
  const {accessToken,refreshToken} = await 
  generateAccessAndRefreshToken(user._id)
 
- const loggedInUser = await User.findById(user._id)
+ const loggedInUser = await User.findById(user._id) // main yaha per await nhi lagaya tha us bajha se kafhi badi problem hui
  .select("-password -refreshToken")
 
  const options = {
@@ -181,12 +182,60 @@ const logoutUser = asyncHandler(async(req, res) => {
     .status(200)
     .clearCookie("accessToken", options)
     .clearCookie("refreshToken", options)
-    .json( new ApiResponse(200, {}, "User lpgged outt"))
-})
+    .json( new ApiResponse(200, {}, "User logged outt"))
+} )
+
+const refreshAccessToken = asyncHandler( async(req, res) => {
+  
+  const incomingRefreshToken = req.cookie.refreshToken || req.body.refreshToken
+  
+  if(!incomingRefreshToken) {
+    throw new ApiError(401, "unauthorized request")
+  }
+
+ try {
+  const decodedToken = jwt.verify(incomingRefreshToken,
+     process.env.REFRESH_TOKEN_SECRET
+   )
+ 
+  const user = User.findById(decodedToken?._id)
+ 
+   if(!user) {
+     throw new ApiError(401, "invalid refresh Token")
+   }
+ 
+   if(incomingRefreshToken !== user?.refreshToken){
+     throw new ApiError(401, "refresh token is expired or usedd")
+   }
+ 
+   const options = {
+     httpOnly: true,
+     secure: true
+   }
+ 
+  const {accessToken, newRefreshToken} = await generateAccessAndRefreshToken(user._id)
+ 
+  return res
+  .status(200)
+  .cookie("accessToken", accessToken, options)
+  .cookie("refreshToken", newRefreshToken, options)
+  .json(
+   new ApiResponse(
+     200,
+     { accessToken, refreshToken: newRefreshToken },
+     "Access token refreshedd"
+   )
+  )
+ } catch (error) {
+    throw new ApiError(401, error?.message || "Invalid refresh token")
+ }
+
+} )
 
 
 export {
   registerUser,
   logoutUser,
-  loginUser
+  loginUser,
+  refreshAccessToken
 }
