@@ -112,6 +112,7 @@ const loginUser = asyncHandler(async(req, res) => {
    // send cookie
    const {email, username, password} = req.body
    console.log("email isss: "+email)
+   console.log("login successfully")
 
    if(!username && !email) {
     throw new ApiError(400, "username or email is required")
@@ -237,9 +238,11 @@ const refreshAccessToken = asyncHandler( async(req, res) => {
 const changeCurrentPassword = asyncHandler( async(req, res) => {
    const{ oldPassword, newPassword} = req.body
 
-  const user = await User.findById(req.user?._id)
-  isPasswordCorrect(oldPassword) 
+console.log("old password :"+ oldPassword)
 
+  const user = await User.findById(req.user?._id)
+  const isPasswordCorrect = await user.isPasswordCorrect(oldPassword) 
+  
   if(!isPasswordCorrect) {
     throw new ApiError(400, "invalid old password")
   }
@@ -255,32 +258,34 @@ const changeCurrentPassword = asyncHandler( async(req, res) => {
 const getCurrentUser = asyncHandler(async(req, res) => {
   return res
   .status(200)
-  .json(200, req.user, "current user fetched successfully")
+  .json(
+    new ApiResponse(200, req.user, "current user fetched successfully")
+  )
 })
 
-const updateAccountDetails = asyncHandler( async(req, res) => {
-  const {fullName, email} = req.body
+const updateAccountDetails = asyncHandler(async(req, res) => {
+    const {fullName, email} = req.body
 
-  if(!fullName || !email) {
-    throw new ApiError(400, "All Fields are required")
-  }
+    if (!fullName || !email) {
+        throw new ApiError(400, "All fields are required")
+    }
 
- const user = User.findByIdAndUpdate(
-    req.user?._id,
-    {
-      $set: {
-        fullName: fullName, // fullName, email // ye bhi chaljata
-        email:email
-      }
-    },
-    {new: true}
+    const user = await User.findByIdAndUpdate(
+        req.user?._id,
+        {
+            $set: {
+                fullName,
+                email: email
+            }
+        },
+        {new: true}
+        
+    ).select("-password")
 
-  ).select("-password")
-
-  return res
-  .status(200)
-  .json( new ApiResponse(200, user, "Account details updated Successfully"))
-})
+    return res
+    .status(200)
+    .json(new ApiResponse(200, user, "Account details updated successfully"))
+});
 
 const updateUserAvatar = asyncHandler( async(req, res) => {
   
@@ -296,6 +301,8 @@ const updateUserAvatar = asyncHandler( async(req, res) => {
     if(!avatar){
     throw new ApiError(400, "Errorr while uploading on avatar")
   }
+  const user1 = await User.findById(req.user._id)
+  console.log(user1)
   const user = await User.findByIdAndUpdate(
     req.user?._id,
     {
@@ -348,8 +355,8 @@ const updateUserCoverImage = asyncHandler( async(req, res) => {
 
 const getUserChannelProfile = asyncHandler( async(req, res) => {
   const  {username} = req.params
-
-  if(!username?.trim) {
+console.log("username "+ username)
+  if(!username?.trim()) {
     throw new ApiError(400, "username is missing")
   }
 
@@ -385,7 +392,7 @@ const getUserChannelProfile = asyncHandler( async(req, res) => {
           },
           isSubscribed: {
             $cond: {
-              if: {$in: [req.user?._id, "subscribers.subscriber"]},
+              if: {$in: [req.user?._id, "$subscribers.subscriber"]},
               then: true,
               else: false
             }
@@ -416,59 +423,75 @@ const getUserChannelProfile = asyncHandler( async(req, res) => {
   )
 })
 
-const getWatchHistory = asyncHandler( async(req, res) => {
-  const user = await User.aggregate([
-    {
-      $match: {
-        _id: new mongoose.Types.ObjectId(req.user._id)
-      }
-    },
-    {
-      $lookup: {
-        from: "videos",
-        localField: "watchHistory",
-        foreignField: "_id",
-        as: "watchHistory",
-        pipeline: [
-          {
-            $lookup: {
-              from: "user",
-              localField: "owner",
-              foreignField: "_id",
-              as: "owner",
-              pipeline: [
-                {
-                  $project: {
-                    fullName: 1,
-                    username: 1,
-                    avatar: 1
-                  }
-                }
-              ]
-            }
+const getWatchHistory = asyncHandler(async (req, res) => {
+  try {
+    const watchHistory = await User.aggregate([
+      {
+        $match: {
+          _id: new mongoose.Types.ObjectId(req.user._id),
+        },
+      },
+      {
+        $unwind: "$watchHistory",
+      },
+      {
+        $sort: {
+          "watchHistory.watchedAt": -1,
+        },
+      },
+      {
+        $lookup: {
+          from: "videos",
+          localField: "watchHistory.video",
+          foreignField: "_id",
+          as: "video",
+        },
+      },
+      {
+        $unwind: "$video",
+      },
+      {
+        $lookup: {
+          from: "users",
+          localField: "video.owner",
+          foreignField: "_id",
+          as: "ownerDetails",
+          pipeline: [
+            {
+              $project: {
+                username: 1,
+                fullName: 1,
+                avatar: 1,
+              },
+            },
+          ],
+        },
+      },
+      {
+        $addFields: {
+          "video.ownerDetails": {
+            $first: "$ownerDetails",
           },
-          {
-           $addFields: {
-              owner: {
-                $first: "$owner"
-              }
-            }
-          }
-        ]
-      }
-    }
-  ])
+          "video.watchedAt": "$watchHistory.watchedAt",
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          video: 1,
+        },
+      },
+    ]);
 
-  return res
-  .status(200)
-  .json(
-    new ApiResponse(
-      200,
-      user[0].watchHistory,
-      "watch History fetched successfully "
-    )
-  )
-})
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(200, watchHistory, "Watch history fetched successfully")
+      );
+  } catch (error) {
+    throw new ApiError(501, "Fetching watch history failed");
+  }
+});
 
 
 export {
