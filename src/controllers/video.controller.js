@@ -4,7 +4,7 @@ import {User} from "../models/user.model.js"
 import {ApiError} from "../utils/ApiError.js"
 import {ApiResponse} from "../utils/ApiResponse.js"
 import {asyncHandler} from "../utils/asyncHandler.js"
-import {uploadOnCloudinary} from "../utils/cloudinary.js"
+import {uploadOnCloudinary, deleteFromCloudinary} from "../utils/cloudinary.js"
 
 
 const getAllVideos = asyncHandler(async (req, res) => {
@@ -67,77 +67,70 @@ const publishAVideo = asyncHandler(async (req, res) => {
 const getVideoById = asyncHandler(async (req, res) => {
     const { videoId } = req.params
 
-    console.log("Video Id : "+ videoId)
-
     if(!videoId?.trim()){
-        throw new ApiError(400, "Video is missing")
+      throw new ApiError(400, "Video ID is missing");
     }
 
-    if(!isValidObjectId(videoId)){
-        throw new ApiError(400, "invalid objectId")
-    }
+    if(!isValidObjectId(videoId)) throw new ApiError(400, "Invalid VideoID");
 
     const video = await Video.aggregate([
-         {
-      $match: {
-        _id: new mongoose.Types.ObjectId(videoId),
-        isPublished: true,
-      },
-    },
-    {
-      $lookup: {
-        from: "likes",
-        localField: "_id",
-        foreignField: "video",
-        as: "likes",
-      },
-    },
-    {
-      $lookup: {
-        from: "users",
-        localField: "owner",
-        foreignField: "_id",
-        as: "owner",
-        pipeline: [
-          {
-            $lookup: {
-              from: "subscriptions",
-              localField: "_id",
-              foreignField: "channel",
-              as: "subscribers",
-            },
-          },
-          {
-            $addFields: {
-              subscribersCount: {
-                $size: "$subscribers",
-              },
-              isSubscribed: false,
-            },
-          },
-          {
-            $project: {
-              username: 1,
-              "avatar.url": 1,
-              subscribersCount: 1,
-            },
-          },
-        ],
-      },
-    },
-    {
-      $addFields: {
-        likesCount: {
-          $size: "$likes",
+      {
+        $match: {
+          _id: new mongoose.Types.ObjectId(videoId),
+          isPublished: true 
         },
-        owner: {
-          $first: "$owner",
-        },
-        isLiked: false,
       },
-    },
-    {
-      $project: {
+      {
+          $lookup: {
+            from: "likes",
+            localField: "_id",
+            foreignField: "video",
+            as: "likes"
+          },
+      },
+      {
+        $lookup: {
+          from: "users",
+          localField: "owner",
+          foreignField: "_id",
+          as: "owner",
+          pipeline: [
+            {
+              $lookup: {
+                from: "subscriptions",
+                localField: "_id",
+                foreignField: "channel",
+                as: "subscribers",
+              }
+            },
+            {
+              $addFields: {
+                subscribersCount: {
+                  $size: "$subscribers"
+                },
+              }
+            },
+            {
+              $project: {
+                username: 1,
+                "avatar.url": 1,
+                subscribersCount: 1,
+                fullName: 1
+              }
+            }
+          ]
+        },
+      },
+      {
+        $addFields: {
+          likesCount: {
+            $size: "$likes"
+          },
+          isLiked: false,
+        }
+      },
+      {
+       $project: {
         "video.url": 1,
         title: 1,
         description: 1,
@@ -148,21 +141,65 @@ const getVideoById = asyncHandler(async (req, res) => {
         owner: 1,
         likesCount: 1,
         isLiked: 1,
-        isSubscribed: 1,
-      },
-    },
-  ]);
+       }
+      }
+    ]);
+   
+    if(!video) throw new ApiError(404, "Video not found")
 
-  if (!video) throw new ApiError(404, "Video not found");
+    return res
+    .status(200)
+    .json(new ApiResponse(200, video[0], "Video found"));  
 
-  return res.status(200).json(new ApiResponse(200, video[0], "Video found"));
 });
 
 const updateVideo = asyncHandler(async (req, res) => {
-    const { videoId } = req.params
-    //TODO: update video details like title, description, thumbnail
+  const { videoId } = req.params;
+   const { title, description } = req.body;
+  const thumbnailLocalPath = req.file?.path;
 
-})
+  if (!isValidObjectId(videoId)) {
+    throw new ApiError(400, "Invalid videoId");
+  }
+
+  const isValidUser = await Video.findById(videoId);
+
+  if (!isValidUser) throw new ApiError(401, "Video cannot be found");
+  if (
+    [title, description].some(
+      (field) => field === undefined || field?.trim() === ""
+    )
+  ) {
+    throw new ApiError(400, "All fields are required");
+  }
+  
+  if (isValidUser?.owner.toString() !== req.user?._id.toString()) {
+    throw new ApiError(
+      400,
+      "You can't edit this video as you are not the owner"
+    );
+  }
+
+const thumbnail = await uploadOnCloudinary(thumbnailLocalPath)
+
+  const video = await Video.findByIdAndUpdate(
+    videoId,
+    {
+      $set: {
+        thumbnail: thumbnail.url,
+        title: title,
+        description: description
+      }
+    }
+  ) 
+
+
+  if (!video) throw new ApiError(501, "Updating Video failed");
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, video, "Video updated successfully"));
+});
 
 const deleteVideo = asyncHandler(async (req, res) => {
     const { videoId } = req.params
