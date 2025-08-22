@@ -1,6 +1,7 @@
 import mongoose, {isValidObjectId} from "mongoose"
 import {Video} from "../models/video.model.js"
 import {Like} from "../models/like.model.js"
+import {Comment} from "../models/comment.model.js"
 import {User} from "../models/user.model.js"
 import {ApiError} from "../utils/ApiError.js"
 import {ApiResponse} from "../utils/ApiResponse.js"
@@ -130,9 +131,20 @@ const getVideoById = asyncHandler(async (req, res) => {
         },
       },
       {
+          $lookup: {
+            from: "comments",
+            localField: "_id",
+            foreignField: "video",
+            as: "comments"
+          }
+      },
+      {
         $addFields: {
           likesCount: {
             $size: "$likes"
+          },
+          commentsCount: {
+            $size: "$comments"
           },
           isLiked: false,
         }
@@ -148,6 +160,7 @@ const getVideoById = asyncHandler(async (req, res) => {
         comments: 1,
         owner: 1,
         likesCount: 1,
+        commentsCount: 1,
         isLiked: 1,
        }
       }
@@ -244,6 +257,25 @@ const deleteVideo = asyncHandler(async (req, res) => {
 
 const togglePublishStatus = asyncHandler(async (req, res) => {
     const { videoId } = req.params
+
+    if( !isValidObjectId(videoId) ) throw new ApiError(400, "Invalide videoID")
+
+    const video = await Video.findById(videoId)
+    
+    if(!video) throw new ApiError(400, "video is not found")
+
+    if( video.owner.toString !== req.user?._id.toString ){
+      throw new ApiError(400, "you can't edit video status because you are not owner of this video")
+    }
+
+    video.isPublished = !video.isPublished
+
+    await video.save({ validateBeforeSave: false });
+
+
+    return res
+    .status(200)
+    .json( new ApiResponse(200, video, "video public status changed successfully"))
 })
 
 export {
