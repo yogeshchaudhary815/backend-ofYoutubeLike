@@ -1,25 +1,18 @@
-import mongoose, { Schema } from "mongoose";
+import { Router } from 'express';
+import {
+    getLikedVideos,
+    toggleCommentLike,
+    toggleVideoLike,
+    toggleTweetLike,
+} from "../controllers/like.controller.js"
+import {verifyJWT} from "../middlewares/auth.middleware.js"
 
-const likeSchema = new Schema(
-  {
-    video: {
-      type: Schema.Types.ObjectId,
-      ref: "Video",
-    },
-    comment: {
-      type: Schema.Types.ObjectId,
-      ref: "Comment",
-    },
-    tweet: {
-      type: Schema.Types.ObjectId,
-      ref: "Tweet",
-    },
-    likedBy: {
-      type: Schema.Types.ObjectId,
-      ref: "User",
-    },
-  },
-  { timestamps: true }
-);
+const router = Router();
+router.use(verifyJWT); // Apply verifyJWT middleware to all routes in this file
 
-export const Like = mongoose.model("Like", likeSchema);
+router.route("/toggle/v/:videoId").post(toggleVideoLike);
+router.route("/toggle/c/:commentId").post(toggleCommentLike);
+router.route("/toggle/t/:tweetId").post(toggleTweetLike);
+router.route("/videos").get(getLikedVideos);
+
+export default router

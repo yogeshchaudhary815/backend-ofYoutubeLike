@@ -244,7 +244,7 @@ const deleteVideo = asyncHandler(async (req, res) => {
     }
    await Promise.all([
     Like.deleteMany( {video: videoId}),
-    // Comment.deleteMany({video: videoId}),
+    Comment.deleteMany({video: videoId}),
     Video.deleteOne({_id: videoId}),
     deleteFromCloudinary(currentVideo.videoFile.videoId),
     deleteFromCloudinary(currentVideo.thumbnail.fileId)

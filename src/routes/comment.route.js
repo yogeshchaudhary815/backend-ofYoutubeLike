@@ -1,26 +1,17 @@
-import mongoose, { Schema } from "mongoose";
-import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2";
+import { Router } from 'express';
+import {
+    addComment,
+    deleteComment,
+    getVideoComments,
+    updateComment,
+} from "../controllers/comment.controller.js"
+import {verifyJWT} from "../middlewares/auth.middleware.js"
 
-const commentSchema = new Schema(
-  {
-    content: {
-      type: String,
-      required: true,
-    },
-    video: {
-      type: Schema.Types.ObjectId,
-      ref: "Video",
-    },
-    owner: {
-      type: Schema.Types.ObjectId,
-      ref: "User",
-    },
-  },
-  {
-    timestamps: true,
-  }
-);
+const router = Router();
 
-commentSchema.plugin(mongooseAggregatePaginate);
+router.use(verifyJWT); // Apply verifyJWT middleware to all routes in this file
 
-export const Comment = mongoose.model("Comment", commentSchema);
+router.route("/:videoId").get(getVideoComments).post(addComment);
+router.route("/c/:commentId").delete(deleteComment).patch(updateComment);
+
+export default router
